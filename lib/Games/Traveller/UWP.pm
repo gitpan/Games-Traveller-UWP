@@ -7,7 +7,7 @@ use warnings;
 require Exporter;
 our @ISA = qw(Exporter);
 our @EXPORT_OK = qw( readUwp toString );
-our $VERSION = '0.93';
+our $VERSION = '0.94';
 
 ###############################################################
 #
@@ -466,7 +466,7 @@ our $VERSION = '0.93';
       
       # add commas
       $stars =~ s/\] /\], /g;
-      $stars =~ s/(\w+ \w+) /$1, /g;
+      $stars =~ s/(\w+ \w+\*?) /$1, /g;
       $stars =~ s/,\s*$//;
             
       # rip it all apart
