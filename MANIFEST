@@ -1,0 +1,7 @@
+Changes
+Makefile.PL
+MANIFEST
+README
+t/Games-Traveller-UWP.t
+lib/Games/Traveller/UWP.pm
+META.yml                                 Module meta-data (added by MakeMaker)
