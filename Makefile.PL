@@ -8,5 +8,5 @@ WriteMakefile(
     PREREQ_PM         => {}, # e.g., Module::Name => 1.1
     ($] >= 5.005 ?     ## Add these new keywords supported since 5.005
       (ABSTRACT_FROM  => 'lib/Games/Traveller/UWP.pm', # retrieve abstract from module
-       AUTHOR         => 'Xpert Generic Account <xpert6@corp.inthosts.net>') : ()),
+       AUTHOR         => 'Robert Eaglestone <reaglest@corp.inthosts.net>') : ()),
 );

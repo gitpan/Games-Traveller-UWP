@@ -1,6 +1,6 @@
 Revision history for Perl extension Games::Traveller::UWP.
 
-0.01  Mon Feb 21 17:23:19 2005
+0.01  Tue Feb 22 14:30:45 2005
 	- original version; created by h2xs 1.23 with options
 		-AX -n Games::Traveller::UWP
 

@@ -3,12 +3,11 @@ package Games::Traveller::UWP;
 use 5.008003;
 use strict;
 use warnings;
-use YAML;
 
 require Exporter;
 our @ISA = qw(Exporter);
 our @EXPORT_OK = qw( readUwp toString );
-our $VERSION = '0.9';
+our $VERSION = '0.91';
 
 ###############################################################
 #
@@ -97,6 +96,10 @@ our $VERSION = '0.9';
    sub ggs           :lvalue { $yaml{+shift}->{data}->{GGs}          }
    sub allegiance    :lvalue { $yaml{+shift}->{data}->{Allegiance}   }
    sub starData      :lvalue { $yaml{+shift}->{data}->{Stellar}      }
+   sub primary       :lvalue { $yaml{+shift}->{data}->{Stellar}->[0] }
+   sub companion     :lvalue { $yaml{+shift}->{data}->{Stellar}->[1] }
+   sub far           :lvalue { $yaml{+shift}->{data}->{Stellar}->[2] }
+   sub farCompanion  :lvalue { $yaml{+shift}->{data}->{Stellar}->[3] }
    sub routes        :lvalue { $yaml{+shift}->{data}->{Routes}       }
    
    ###########################################################
@@ -163,41 +166,31 @@ our $VERSION = '0.9';
    ############################################################
    sub stars($)
    {
-      my $self    = shift;
+      my $self = shift;
       return '' unless $self->starData;
-      my @stardat = @{$self->starData};
      
-      my $primary = shift @stardat;
-      my @primary = @$primary;
-           
-      my $out = '';
+      my @primary   = @{$self->primary};
+      my @companion = @{$self->companion};
+      my @far       = @{$self->far};
+      my @farcmp    = @{$self->farCompanion};
+
+      my $primary = $primary[0];
+      $primary = '(' . join( ' ', @primary ) . ')' if @primary > 1;
+      $primary = $primary . ' ';
       
-      $out = $primary[0]                       unless @primary > 1;
-      $out = '(' . join( ' ', @primary ) . ')' if     @primary > 1;
+      my $companion = join( ' ', @companion );
+      $companion = $companion . ' ' if $companion;
       
-      while ( @stardat && ref $stardat[0] ne 'ARRAY' )
+      my $far = '';
+      if ( @far )
       {
-         $out .= ' ' . shift @stardat;
+         $far = $far[0];
+         $far = '(' . join( ' ', @far ) . ')' if @far > 1;
+         $far .= ' ' . join( ' ', @farcmp ) if @farcmp;
+         $far = "[$far]";
       }
       
-      my $far = shift @stardat;
-      
-      if ( $far )
-      {
-         my @far = @$far;
-         $out .= ' [';
-         my $farpri = shift @far;
-         my @farpri = @$farpri;
-         
-         $out .= $farpri[0]                       unless @farpri > 1;
-         $out .= '(' . join( ' ', @farpri ) . ')' if     @farpri > 1;
-         
-         $out .= ' ' . join( ' ', @far )          if     @far;
-         
-         $out .= ']';
-      }
-      
-      return $out;
+      return $primary . $companion . $far;
    }
 
    ###########################################################
@@ -422,12 +415,27 @@ our $VERSION = '0.9';
       # add commas
       $stars =~ s/\] /\], /g;
       $stars =~ s/(\w+ \w+) /$1, /g;
+      $stars =~ s/,\s*$//;
       
-      $stars =~ s/^(....*)$/[$1]/;
+      print "$stars\n";
       
-      my $stardat = YAML::Load( "--- \n stars: $stars\n" );
+      # rip it all apart
+      my ($junk1, $pri, $comp, 
+          $junk2, $far, $farcomp) = split( /[\[\]]/, $stars );
       
-      $self->starData = $stardat->{stars};
+      $comp =~ s/^,\s*//;
+      $comp =~ s/,\s*$//;
+      $farcomp =~ s/^,\s*//;
+      
+      my @pri  = split( /\s*,\s*/, $pri  );
+      my @comp = split( /\s*,\s*/, $comp );
+      my @far  = split( /\s*,\s*/, $far  );
+      my @fcmp = split( /\s*,\s*/, $farcomp );
+
+      $self->starData = 
+      [
+         \@pri, \@comp, \@far, \@fcmp
+      ];      
    }
    
    sub _loadRoutes
@@ -500,6 +508,46 @@ The following accessors can be either RValues (read) or LValues (write):
    $uwp->allegiance
    $uwp->starData (an array ref)
    $uwp->routes (an array ref)
+   
+   starData() returns a four-element array reference, each element of which
+   contains another array reference to a group of stars:
+   
+   my $aref  = $uwp->starData();
+   my @array = @$aref;
+   
+   print $aref[0]->[0]  # primary star.  always present.
+       , $aref[0]->[1]  # binary companion to primary, if there is one.
+       
+       , $aref[1]->[0]  # first 'near' companion star
+       , $aref[1]->[1]  # second 'near' companion star
+       
+       , $aref[2]->[0]  # far primary star.
+       , $aref[2]->[1]  # binary companion to far primary, if there is one.
+       
+       , $aref[3]->[0]  # first 'near' companion star to far primary
+       , $aref[3]->[1]; # second 'near' companion star to far primary
+
+   These elements (primary, companion, far, far companion) are individually
+   accessible via these read-write methods:
+   
+   $uwp->primary 
+   $uwp->companion
+   $uwp->far
+   $uwp->farCompanion
+      
+   These all return array references.
+
+   print $uwp->primary->[0], "\n"; # primary star only
+   print "@{$uwp->primary}\n";     # primary with its binary companion, if any.
+
+   print $uwp->companion->[0], "\n"; # first near companion
+   print "@{$uwp->companion}\n";     # all near companions
+   
+   print $uwp->far->[0], "\n";    # far primary only
+   print "@{$uwp->far}\n";        # far primary with binary companion, if any.
+
+   print $uwp->farCompanion->[0], "\n"; # first near companion to far primary
+   print "@{$uwp->farCompanion}\n";     # all near companions to far primary
    
 =back
    
