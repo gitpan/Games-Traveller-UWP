@@ -7,7 +7,7 @@ use warnings;
 require Exporter;
 our @ISA = qw(Exporter);
 our @EXPORT_OK = qw( readUwp toString );
-our $VERSION = '0.91';
+our $VERSION = '0.92';
 
 ###############################################################
 #
@@ -24,8 +24,8 @@ our $VERSION = '0.91';
 
    my %yaml = ();
    
-   sub new { bless {}, shift }
-
+   sub new { bless{}, shift }
+   
    ###########################################################
    #
    #  Essential methods
@@ -41,7 +41,8 @@ our $VERSION = '0.91';
       my $self = shift;
       my $line = shift;
 
-      $yaml{+$self}->{data} = ();      
+      $self->_data = ();
+            
       $self->_oldUWP( $line ) 
          unless $self->_standardUWP( $line );
          
@@ -50,21 +51,19 @@ our $VERSION = '0.91';
    
    sub toString
    {
-      my $self   = shift;
+      my $self   = shift;      
       my $routes = '';
       
       $routes = ' :' . join( ',', @{$self->routes} ) if $self->routes;
-      
-      return sprintf( "%-15s %04d %8s %s %-15s %s %s%s%s %2s %s%s\n",
+           
+      return sprintf( "%-15s %04d %8s %2s %-15s %2s %3s %2s %s%s\n",
              $self->name,
              $self->hex,
              $self->uwp,
              $self->bases,
              $self->codes,
              $self->zone,
-             $self->popMult,
-             $self->belts,
-             $self->ggs,
+             $self->pbg,
              $self->allegiance,
              $self->stars,
              $routes );
@@ -77,6 +76,7 @@ our $VERSION = '0.91';
    ###########################################################
    
    sub _yaml         :lvalue { $yaml{+shift} }
+   sub _data         :lvalue { $yaml{+shift}->{data} }
    sub _src          :lvalue { $yaml{+shift}->{data}->{src}          }
    sub name          :lvalue { $yaml{+shift}->{data}->{Name}         }
    sub hex           :lvalue { $yaml{+shift}->{data}->{Hex}          }
@@ -128,6 +128,14 @@ our $VERSION = '0.91';
    sub isCp($) { (codes(shift) =~ /cp/)                && 'Cp ' }
    sub isCx($) { (codes(shift) =~ /cx/)                && 'Cx ' }
 
+   sub isNice($)
+   {
+      my $self = shift;
+      return 1 if $hex2dec{ $self->tl } < 7
+               || ( $self->atmosphere =~ /45678/
+                 && $self->population >= 100_000_000 );
+   }
+   
    ############################################################
    #
    #   Returns the calculated population of the world.
@@ -149,16 +157,37 @@ our $VERSION = '0.91';
 
    ############################################################
    #
-   #  Returns the core UWP, i.e. A123456-7
+   #  Returns the core UWP, i.e. 'A123456-7'
    #
    ############################################################
    sub uwp($)
    {
       my $self = shift;
-      return $self->starport . $self->size       . $self->atmosphere . $self->hydrographics
-           . $self->popDigit . $self->government . $self->law . '-'  . $self->tl;
+      no strict;
+      return $self->starport . ($self->size || '0')       
+                             . ($self->atmosphere || '0')
+                             . ($self->hydrographics || '0')
+                             . ($self->popDigit || '0')
+                             . ($self->government || '0')
+                             . ($self->law || '0')
+                             . '-'  
+                             . ($self->tl || '0');
    }
 
+   ############################################################
+   #
+   #  Returns the PBG, i.e. '323'
+   #
+   ############################################################
+   sub pbg($)
+   {
+      my $self = shift;
+      no strict;
+      return ($self->popMult || '1')
+           . ($self->belts   || '0')
+           . ($self->ggs     || '0');
+   }
+   
    ############################################################
    #
    #  Converts star data back to string format.
@@ -297,15 +326,17 @@ our $VERSION = '0.91';
       my $self = shift;
       my $line = shift;
       
-      if ( $line =~ /^\s*(\S.+\S)?    # name
-                      \s*(\d{4})      # hex
-                      \s+(\w\w{6}-\w) # uwp
-                      \s+(.*)         # codes
-                      \s+(\d{3})      # PBG
-                      \s+(\w\w)       # allegience
-                      \s+(.*)         # star data, etc
-                      \s*
+      if ( $line =~ /^\s*(\S.+\S)?    # $1 name
+                      \s*(\d{4})      # $2 hex
+                      \s+(\w\w{6}-\w) # $3 uwp
+                      \s+(.*)         # $4 codes
+                      \s+(\d{3})      # $5 PBG
+                      (.*)            # $6 etc
                     $/x )
+#                      \s+(\w\w)       # allegience
+#                      \s+(.*)         # star data, etc
+#                      \s*
+#                    $/x )
       {
          $self->_src = 'Std';
          $self->name = $1;
@@ -314,9 +345,18 @@ our $VERSION = '0.91';
          $self->_loadUwp( $3 );
          $self->_loadCodes( $4 );
          $self->_loadPBG( $5 );
+
+         my $etc = $6;
          
-         $self->allegiance = $6;
-         $self->_loadStars( $7 );
+         if ( $etc =~ /(\w\w)\s*(.*)/ )
+         {
+            $self->allegiance = $1;
+            $self->_loadStars( $2 );
+         }
+         else
+         {
+            $self->allegiance = 'Na';
+         }
          
          return $self;
       }      
@@ -341,16 +381,16 @@ our $VERSION = '0.91';
          $self->_loadUwp( $3 );
          
          my @codes = split( ' ', $4 );
-         my $gg = pop @codes if $codes[-1] eq 'G';
+         my $gg = pop @codes if @codes && $codes[-1] eq 'G';
          
          $self->_loadCodes( join( ' ', @codes ) ); 
         
-         $self->popMult = 5;
+         $self->popMult = 1;
          $self->belts   = 0;
          $self->ggs     = 0;
          $self->ggs     = 1 if $gg;
          
-         $self->allegiance = 'Un';
+         $self->allegiance = 'Na';
       }
       return ();
    }
@@ -377,12 +417,12 @@ our $VERSION = '0.91';
       my $self   = shift;
       my $codes  = shift;
       my @codes  = split( ' ', $codes );
-      my $bases  = shift @codes if length( $codes[0]  ) == 1;
-      my $zone   = pop   @codes if length( $codes[-1] ) == 1;
+      my $bases  = shift @codes if @codes && length( $codes[0]  ) == 1;
+      my $zone   = pop   @codes if @codes && length( $codes[-1] ) == 1;
       
-      $self->bases = $bases;
+      $self->bases = $bases || '';
       $self->codes = join( ' ', @codes );
-      $self->zone  = $zone;
+      $self->zone  = $zone  || '';
    }
    
    sub _loadPBG
@@ -425,12 +465,12 @@ our $VERSION = '0.91';
       
       $comp =~ s/^,\s*//;
       $comp =~ s/,\s*$//;
-      $farcomp =~ s/^,\s*//;
+      $farcomp =~ s/^,\s*// if $farcomp;
       
-      my @pri  = split( /\s*,\s*/, $pri  );
-      my @comp = split( /\s*,\s*/, $comp );
-      my @far  = split( /\s*,\s*/, $far  );
-      my @fcmp = split( /\s*,\s*/, $farcomp );
+      my @pri  = split( /\s*,\s*/, $pri  )    if $pri;
+      my @comp = split( /\s*,\s*/, $comp )    if $comp;
+      my @far  = split( /\s*,\s*/, $far  )    if $far;
+      my @fcmp = split( /\s*,\s*/, $farcomp ) if $farcomp;
 
       $self->starData = 
       [

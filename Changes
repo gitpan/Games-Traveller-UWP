@@ -4,3 +4,6 @@ Revision history for Perl extension Games::Traveller::UWP.
 	- original version; created by h2xs 1.23 with options
 		-AX -n Games::Traveller::UWP
 
+0.90  First Beta submission
+0.91  Additional utility methods added
+0.92  Functionality expansion
