@@ -7,7 +7,7 @@ use warnings;
 require Exporter;
 our @ISA = qw(Exporter);
 our @EXPORT_OK = qw( readUwp toString );
-our $VERSION = '0.92';
+our $VERSION = '0.93';
 
 ###############################################################
 #
@@ -56,9 +56,9 @@ our $VERSION = '0.92';
       
       $routes = ' :' . join( ',', @{$self->routes} ) if $self->routes;
            
-      return sprintf( "%-15s %04d %8s %2s %-15s %2s %3s %2s %s%s\n",
+      return sprintf( "%-15s%04d %8s %1s %-20s %2s %3s %2s %s%s",
              $self->name,
-             $self->hex,
+             $self->loc,
              $self->uwp,
              $self->bases,
              $self->codes,
@@ -79,7 +79,7 @@ our $VERSION = '0.92';
    sub _data         :lvalue { $yaml{+shift}->{data} }
    sub _src          :lvalue { $yaml{+shift}->{data}->{src}          }
    sub name          :lvalue { $yaml{+shift}->{data}->{Name}         }
-   sub hex           :lvalue { $yaml{+shift}->{data}->{Hex}          }
+   sub loc           :lvalue { $yaml{+shift}->{data}->{Hex}          }
    sub starport      :lvalue { $yaml{+shift}->{data}->{Starport}     }
    sub size          :lvalue { $yaml{+shift}->{data}->{Size}         }
    sub atmosphere    :lvalue { $yaml{+shift}->{data}->{Atmosphere}   }
@@ -108,20 +108,20 @@ our $VERSION = '0.92';
    #
    ###########################################################
    
-   sub isBa($) { (population(shift) eq '0')            && 'Ba ' }
-   sub isLo($) { (population(shift) =~ /0-4/)          && 'Lo ' }
-   sub isHi($) { (population(shift) =~ /9A/)           && 'Hi ' }
+   sub isBa($) { (population(shift) == 0)          && 'Ba ' }
+   sub isLo($) { (population(shift) =~ /[0-4]/)        && 'Lo ' }
+   sub isHi($) { (population(shift) =~ /[9A]/)         && 'Hi ' }
    sub isAg($) { (uwp(shift) =~ /^..[4-9][4-8][5-7]/)  && 'Ag ' }
    sub isNa($) { (uwp(shift) =~ /^..[0-3][0-3][6-A]/)  && 'Na ' }
    sub isIn($) { (uwp(shift) =~ /^..[012479].[9A]/)    && 'In ' }
-   sub isNi($) { (uwp(shift) =~ /^....[0-6]/)          && 'Ni ' }
+   sub isNi($) { (uwp(shift) =~ /^....[1-6]/)          && 'Ni ' }
    sub isRi($) { (uwp(shift) =~ /^..[6-8].[6-8][4-9]/) && 'Ri ' }
    sub isPo($) { (uwp(shift) =~ /^..[2-5][0-3][^0]/)   && 'Po ' }
    
    sub isWa($) { (hydrographics(shift) eq 'A')         && 'Wa ' }
    sub isDe($) { (uwp(shift) =~ /^..[2-A]0/)           && 'De ' }
    sub isAs($) { (size(shift) eq '0')                  && 'As ' }
-   sub isVa($) { (uwp(shift) =~ /^..[1-A]0/)           && 'Va ' }
+   sub isVa($) { (uwp(shift) =~ /^.[1-A]0/)            && 'Va ' }
    sub isIc($) { (uwp(shift) =~ /^..[01][1-A]/)        && 'Ic ' }
    sub isFl($) { (uwp(shift) =~ /^..A[1-A]/)           && 'Fl ' }
    
@@ -131,9 +131,23 @@ our $VERSION = '0.92';
    sub isNice($)
    {
       my $self = shift;
-      return 1 if $hex2dec{ $self->tl } < 7
-               || ( $self->atmosphere =~ /45678/
-                 && $self->population >= 100_000_000 );
+      return 1 if $self->tl         =~ /[12345]/
+               || $self->atmosphere =~ /[456789]/
+               || $self->population >= 100_000_000;
+   }
+
+   sub isGassy($)
+   {
+      my $self = shift;
+      return 1 if $self->atmosphere ne '0';
+   }
+   
+   sub isaRock($)
+   {
+   	  my $self = shift;
+   	  return 1 if $self->size ne '0' 
+   	           && $self->atmosphere eq '0'
+                 && $self->hydrographics eq '0';
    }
    
    ############################################################
@@ -152,8 +166,8 @@ our $VERSION = '0.92';
    #  Returns the hex-row or hex-col coordinates of the world.
    #
    ############################################################   
-   sub col($)     { (location(shift) =~ /^(..)/)[0] }
-   sub row($)     { (location(shift) =~ /(..)$/)[0] }
+   sub col($)     { (loc(shift) =~ /^(..)/)[0] }
+   sub row($)     { (loc(shift) =~ /(..)$/)[0] }
 
    ############################################################
    #
@@ -183,7 +197,7 @@ our $VERSION = '0.92';
    {
       my $self = shift;
       no strict;
-      return ($self->popMult || '1')
+      return ($self->popMult || '0')
            . ($self->belts   || '0')
            . ($self->ggs     || '0');
    }
@@ -207,11 +221,12 @@ our $VERSION = '0.92';
       $primary = '(' . join( ' ', @primary ) . ')' if @primary > 1;
       $primary = $primary . ' ';
       
-      my $companion = join( ' ', @companion );
-      $companion = $companion . ' ' if $companion;
+      my $companion = '';
+      $companion = join( ' ', @companion ) . ' '
+         if @companion > 0;
       
       my $far = '';
-      if ( @far )
+      if ( @far > 0)
       {
          $far = $far[0];
          $far = '(' . join( ' ', @far ) . ')' if @far > 1;
@@ -333,14 +348,10 @@ our $VERSION = '0.92';
                       \s+(\d{3})      # $5 PBG
                       (.*)            # $6 etc
                     $/x )
-#                      \s+(\w\w)       # allegience
-#                      \s+(.*)         # star data, etc
-#                      \s*
-#                    $/x )
       {
          $self->_src = 'Std';
          $self->name = $1;
-         $self->hex  = $2;
+         $self->loc  = $2;
          
          $self->_loadUwp( $3 );
          $self->_loadCodes( $4 );
@@ -376,7 +387,7 @@ our $VERSION = '0.92';
       {
          $self->_src = 'Old';
          $self->name = $1;
-         $self->hex  = $2;
+         $self->loc  = $2;
          
          $self->_loadUwp( $3 );
          
@@ -386,6 +397,7 @@ our $VERSION = '0.92';
          $self->_loadCodes( join( ' ', @codes ) ); 
         
          $self->popMult = 1;
+         $self->popMult = 0 if $self->popDigit == 0;
          $self->belts   = 0;
          $self->ggs     = 0;
          $self->ggs     = 1 if $gg;
@@ -456,9 +468,7 @@ our $VERSION = '0.92';
       $stars =~ s/\] /\], /g;
       $stars =~ s/(\w+ \w+) /$1, /g;
       $stars =~ s/,\s*$//;
-      
-      print "$stars\n";
-      
+            
       # rip it all apart
       my ($junk1, $pri, $comp, 
           $junk2, $far, $farcomp) = split( /[\[\]]/, $stars );
@@ -530,7 +540,7 @@ The following accessors can be either RValues (read) or LValues (write):
 =over 3
 
    $uwp->name       
-   $uwp->hex        
+   $uwp->loc        
    $uwp->starport   
    $uwp->size
    $uwp->atmosphere
@@ -598,7 +608,14 @@ In addition to the above, there is a large body of read-only accessors:
    $uwp->population # calculates the population from the popDigit and popMult
    $uwp->col        # returns the column component of the hex location
    $uwp->row        # ibid for the row
+   $uwp->isNice     # returns '1' if the TL < 7, OR
+                    # the atmosphere is pleasant, OR
+                    # the population >= 100 million
+   $uwp->isGassy    # returns '1' if the atmosphere isn't 0 (zero)
+   $uwp->isaRock    # returns '1' if the size is not 0 (zero)
+                    #    AND the atmosphere and hydrographics ARE 0 (zero)
    $uwp->uwp        # returns the core UWP (i.e. "A123456-7")
+   $uwp->pbg        # returns the PBG string (i.e. "323")
    $uwp->stars      # returns the standard star data string
    $uwp->importance # calculates how important the world probably is
 
@@ -646,7 +663,7 @@ In addition to the above, there is a large body of read-only accessors:
    
 =head1 AUTHOR
 
-  Pasulii Immuguna
+  Pasuuli Immuguna
 
 =head1 COPYRIGHT
 
